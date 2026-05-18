@@ -1,0 +1,69 @@
+[package]
+name = "mcpdock"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "mcpdock_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+rusqlite = { version = "0.33", features = ["bundled"] }
+anyhow = "1"
+rmcp = { version = "1.7", features = ["client", "server", "transport-child-process", "transport-streamable-http-client-reqwest", "transport-streamable-http-server"] }
+
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "http2", "charset", "system-proxy"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "sync", "io-util"] }
+tokio-util = { version = "0.7", features = ["full"] }
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
+urlencoding = "2"
+dashmap = "6"
+chrono = "0.4"
+http = "1"
+uuid = { version = "1", features = ["v4"] }
+tauri-plugin-process = "2.3.1"
+tauri-plugin-autostart = "2"
+
+[features]
+portable = []
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true
+panic = "abort"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+too-many-lines = "allow"
+wildcard-imports = "allow"
+doc-markdown = "allow"
+module-name-repetitions = "allow"
+significant-drop-tightening = "allow"
+format-push-string = "allow"
+literal-string-with-formatting-args = "allow"
+ignored-unit-patterns = "allow"
+let-underscore-untyped = "allow"
+needless-pass-by-value = "allow"
+

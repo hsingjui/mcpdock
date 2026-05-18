@@ -1,0 +1,73 @@
+import {
+  create,
+  NAlert,
+  NButton,
+  NButtonGroup,
+  NCard,
+  NCheckbox,
+  NCollapse,
+  NCollapseItem,
+  NConfigProvider,
+  NDialogProvider,
+  NDropdown,
+  NDynamicInput,
+  NEmpty,
+  NForm,
+  NFormItem,
+  NInput,
+  NInputNumber,
+  NMessageProvider,
+  NModal,
+  NPopconfirm,
+  NPopover,
+  NProgress,
+  NRadioButton,
+  NRadioGroup,
+  NSelect,
+  NSpin,
+  NSwitch,
+  NTable,
+  NTag,
+  NTooltip,
+} from 'naive-ui';
+import { createPinia } from 'pinia';
+import { createApp } from 'vue';
+import { i18n } from './i18n';
+import './style.css';
+import App from './App.vue';
+
+const naive = create({
+  components: [
+    NAlert,
+    NButton,
+    NCard,
+    NButtonGroup,
+    NCheckbox,
+    NCollapse,
+    NCollapseItem,
+    NConfigProvider,
+    NDialogProvider,
+    NDropdown,
+    NDynamicInput,
+    NEmpty,
+    NForm,
+    NFormItem,
+    NInput,
+    NInputNumber,
+    NMessageProvider,
+    NModal,
+    NPopconfirm,
+    NPopover,
+    NProgress,
+    NRadioButton,
+    NRadioGroup,
+    NSelect,
+    NSpin,
+    NSwitch,
+    NTable,
+    NTag,
+    NTooltip,
+  ],
+});
+
+createApp(App).use(createPinia()).use(i18n).use(naive).mount('#app');

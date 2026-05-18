@@ -1,0 +1,188 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* ─── Brand ─── */
+  --color-primary: #18a058;
+  --color-primary-hover: #36ad6a;
+  --color-primary-pressed: #0c7a43;
+  --color-primary-light: #eaf5ef;
+
+  /* ─── Surfaces ─── */
+  --color-base: #ffffff;
+  --color-surface: #f9fafb;
+  --color-main: #1f2937;
+  --color-sub: #4b5563;
+  --color-light: #e5e7eb;
+  --color-divider-soft: #eef2f7;
+
+  /* ─── Semantic status ─── */
+  --color-info: #2080f0;
+  --color-error: #d03050;
+  --color-warning: #ea580c;
+  --color-emerald: #059669;
+  --color-violet: #7c3aed;
+
+  /* ─── Semantic soft backgrounds ─── */
+  --color-success-soft: #f0fdf4;
+  --color-info-soft: #eff6ff;
+  --color-error-soft: #fef2f2;
+  --color-warning-soft: #fff7ed;
+  --color-emerald-soft: #ecfdf5;
+  --color-violet-soft: #f3f0ff;
+
+  /* ─── Badge / tag semantic tokens ─── */
+  --color-tag-emerald-bg: #ecfdf5;
+  --color-tag-emerald-text: #047857;
+  --color-tag-emerald-border: #a7f3d0;
+  --color-tag-red-bg: #fef2f2;
+  --color-tag-red-text: #b91c1c;
+  --color-tag-red-border: #fecaca;
+  --color-tag-amber-bg: #fffbeb;
+  --color-tag-amber-text: #b45309;
+  --color-tag-amber-border: #fde68a;
+  --color-tag-blue-bg: #eff6ff;
+  --color-tag-blue-text: #1d4ed8;
+  --color-tag-purple-bg: #faf5ff;
+  --color-tag-purple-text: #7c3aed;
+  --color-tag-slate-bg: #f1f5f9;
+  --color-tag-slate-text: #475569;
+  --color-tag-gray-bg: #f9fafb;
+  --color-tag-gray-text: #6b7280;
+  --color-tag-gray-border: #e5e7eb;
+
+  /* ─── Interactive hover ─── */
+  --color-hover-bg: #f1f5f9;
+
+  /* ─── Disabled / placeholder ─── */
+  --color-disabled: #9ca3af;
+  --color-placeholder: #d1d5db;
+
+  /* ─── Shadows & fonts ─── */
+  --shadow-soft: 0 2px 10px -4px rgba(0, 0, 0, 0.05);
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+:root {
+  color: var(--color-main);
+  background: var(--color-base);
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+}
+
+button {
+  font: inherit;
+}
+
+[data-tauri-drag-region] {
+  cursor: grab;
+  app-region: drag;
+}
+
+[data-tauri-no-drag-region] {
+  app-region: no-drag;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-placeholder);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-disabled);
+}
+
+/* ─── Skip rendering off-screen server cards ─── */
+.mcp-server-card {
+  content-visibility: auto;
+  contain-intrinsic-height: 80px; /* estimated collapsed card height */
+}
+
+/* ─── Dark mode overrides ─── */
+html.dark {
+  --color-base: #101014;
+  --color-surface: #18181c;
+  --color-main: rgba(255, 255, 255, 0.82);
+  --color-sub: rgba(255, 255, 255, 0.52);
+  --color-light: #3a3a3c;
+  --color-divider-soft: #2e2e32;
+  --color-primary-light: #1a3a2a;
+  --color-success-soft: #0d2818;
+  --color-info-soft: #0d1b2e;
+  --color-error-soft: #2e0d0d;
+  --color-warning-soft: #2e1b0d;
+  --color-emerald-soft: #0d2818;
+  --color-violet-soft: #1e1533;
+
+  --color-tag-emerald-bg: #052e16;
+  --color-tag-emerald-text: #34d399;
+  --color-tag-emerald-border: #065f46;
+  --color-tag-red-bg: #2e0d0d;
+  --color-tag-red-text: #f87171;
+  --color-tag-red-border: #7f1d1d;
+  --color-tag-amber-bg: #2e1b0d;
+  --color-tag-amber-text: #fbbf24;
+  --color-tag-amber-border: #78350f;
+  --color-tag-blue-bg: #0d1b2e;
+  --color-tag-blue-text: #60a5fa;
+  --color-tag-blue-border: #1e3a5f;
+  --color-tag-purple-bg: #1e1533;
+  --color-tag-purple-text: #c084fc;
+  --color-tag-purple-border: #3b0764;
+  --color-tag-slate-bg: #1e1e22;
+  --color-tag-slate-text: #94a3b8;
+  --color-tag-gray-bg: #1e1e22;
+  --color-tag-gray-text: #9ca3af;
+  --color-tag-gray-border: #3a3a3c;
+
+  --color-hover-bg: #2a2a2e;
+  --color-disabled: #6b7280;
+  --color-placeholder: #4a4a4c;
+
+  --shadow-soft: 0 2px 10px -4px rgba(0, 0, 0, 0.3);
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: var(--color-placeholder);
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--color-disabled);
+}
+
+/* ─── Theme switch animation ─── */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition:
+    color 0.3s ease,
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    fill 0.3s ease,
+    stroke 0.3s ease !important;
+}
