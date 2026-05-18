@@ -1,0 +1,202 @@
+name: Publish Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (optional, defaults to latest stable vX.Y.Z)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  APP_NAME: mcpdock
+  PRODUCT_NAME: MCPDock
+  REPO_OWNER: hsingjui
+
+jobs:
+  publish-homebrew:
+    name: Publish Homebrew Cask
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve release tag
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          REPO="${{ github.repository }}"
+          INPUT_TAG="${{ github.event.inputs.tag }}"
+          INPUT_TAG="$(echo "${INPUT_TAG}" | xargs)"
+
+          if [[ -z "${INPUT_TAG}" ]]; then
+            TAG="$(gh api "repos/${REPO}/releases/latest" --jq '.tag_name')"
+
+            if [[ -z "${TAG}" || "${TAG}" == "null" ]]; then
+              echo "::error::Failed to resolve the latest stable release tag."
+              exit 1
+            fi
+
+            echo "::notice::No tag provided. Using latest stable release ${TAG}."
+          else
+            TAG="${INPUT_TAG}"
+          fi
+
+          if [[ ! "${TAG}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Tag '${TAG}' must match vX.Y.Z."
+            exit 1
+          fi
+
+          VERSION="${BASH_REMATCH[1]}"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release is published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          REPO="${{ github.repository }}"
+
+          IS_DRAFT="$(gh release view "${TAG}" --repo "${REPO}" --json isDraft --jq '.isDraft')"
+          IS_PRERELEASE="$(gh release view "${TAG}" --repo "${REPO}" --json isPrerelease --jq '.isPrerelease')"
+
+          if [[ "${IS_DRAFT}" == "true" ]]; then
+            echo "::error::Release ${TAG} is still a draft. Publish the release before updating Homebrew."
+            exit 1
+          fi
+
+          if [[ "${IS_PRERELEASE}" == "true" ]]; then
+            echo "::error::Release ${TAG} is a prerelease. Homebrew publishing only supports stable releases."
+            exit 1
+          fi
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          mkdir -p artifacts
+
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+
+          ASSETS=(
+            "${PRODUCT_NAME}-v${VERSION}-arm64.dmg"
+            "${PRODUCT_NAME}-v${VERSION}-x64.dmg"
+          )
+
+          for ASSET in "${ASSETS[@]}"; do
+            echo "::group::Downloading ${ASSET}"
+            gh release download "${TAG}" \
+              --repo "${{ github.repository }}" \
+              --pattern "${ASSET}" \
+              --dir artifacts \
+              --clobber
+            echo "::endgroup::"
+          done
+
+          ls -lh artifacts/
+
+      - name: Compute SHA256 hashes
+        id: hashes
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          compute_hash() {
+            local file="$1"
+            local name="$2"
+
+            if [[ ! -f "${file}" ]]; then
+              echo "::error::Missing artifact: ${file}"
+              exit 1
+            fi
+
+            local hash
+            hash=$(sha256sum "${file}" | cut -d ' ' -f 1)
+
+            echo "${name}=${hash}" >> "$GITHUB_OUTPUT"
+            echo "${name}: ${hash}"
+          }
+
+          compute_hash "artifacts/${PRODUCT_NAME}-v${VERSION}-arm64.dmg" "sha_dmg_arm64"
+          compute_hash "artifacts/${PRODUCT_NAME}-v${VERSION}-x64.dmg" "sha_dmg_x64"
+
+      - name: Publish Homebrew Cask
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA_ARM64="${{ steps.hashes.outputs.sha_dmg_arm64 }}"
+          SHA_X64="${{ steps.hashes.outputs.sha_dmg_x64 }}"
+
+          git clone --depth 1 \
+            "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/${REPO_OWNER}/homebrew-tap.git" \
+            homebrew-tap
+
+          cd homebrew-tap
+          mkdir -p Casks
+
+          cat > Casks/mcpdock.rb <<'RUBY_EOF'
+          cask "mcpdock" do
+            version "__VERSION__"
+
+            on_arm do
+              url "https://github.com/__OWNER__/__APP__/releases/download/v#{version}/__PRODUCT__-v#{version}-arm64.dmg",
+                  verified: "github.com/__OWNER__/__APP__/"
+              sha256 "__SHA_ARM64__"
+            end
+
+            on_intel do
+              url "https://github.com/__OWNER__/__APP__/releases/download/v#{version}/__PRODUCT__-v#{version}-x64.dmg",
+                  verified: "github.com/__OWNER__/__APP__/"
+              sha256 "__SHA_X64__"
+            end
+
+            name "MCPDock"
+            desc "MCP server management and aggregation gateway on your desktop"
+            homepage "https://github.com/__OWNER__/__APP__"
+
+            livecheck do
+              url :url
+              strategy :github_latest
+            end
+
+            app "MCPDock.app"
+
+            zap trash: [
+              "~/Library/Application Support/MCPDock",
+              "~/Library/Preferences/com.hsingjui.mcpdock.plist",
+              "~/Library/Saved Application State/com.hsingjui.mcpdock.savedState",
+            ]
+          end
+          RUBY_EOF
+
+          sed -i 's/^          //' Casks/mcpdock.rb
+
+          sed -i "s/__VERSION__/${VERSION}/g" Casks/mcpdock.rb
+          sed -i "s/__OWNER__/${REPO_OWNER}/g" Casks/mcpdock.rb
+          sed -i "s/__APP__/${APP_NAME}/g" Casks/mcpdock.rb
+          sed -i "s/__PRODUCT__/${PRODUCT_NAME}/g" Casks/mcpdock.rb
+          sed -i "s/__SHA_ARM64__/${SHA_ARM64}/g" Casks/mcpdock.rb
+          sed -i "s/__SHA_X64__/${SHA_X64}/g" Casks/mcpdock.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Casks/mcpdock.rb
+
+          if git diff --cached --quiet; then
+            echo "Homebrew Cask is already up to date."
+          else
+            git commit -m "mcpdock ${VERSION}"
+            git push
+            echo "::notice::Homebrew Cask updated to ${VERSION}"
+          fi
