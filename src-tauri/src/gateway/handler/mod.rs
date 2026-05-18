@@ -72,7 +72,7 @@ impl ServerHandler for GroupHandler {
         )
         .with_server_info(Implementation::new(
             format!("MCPDock-{}", self.group_name),
-            "0.1.0",
+            "0.1.1",
         ))
     }
 
