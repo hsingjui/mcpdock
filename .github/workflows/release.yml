@@ -251,7 +251,7 @@ jobs:
           prerelease: false
           generate_release_notes: true
           body: |
-            ## 下载安装
+            ### 下载安装
 
             | 平台 | 文件 | 说明 |
             | --- | --- | --- |
@@ -260,7 +260,7 @@ jobs:
             | Windows | [MCPDock-${{ github.ref_name }}-x64.msi](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/MCPDock-${{ github.ref_name }}-x64.msi) | 安装版 |
             | Windows | [MCPDock-${{ github.ref_name }}-x64-Portable.zip](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/MCPDock-${{ github.ref_name }}-x64-Portable.zip) | 便携版 |
 
-            ### macOS 安装提示
+            #### macOS 安装提示
 
             MCPDock 未使用 Apple Developer 证书签名，首次安装后系统可能会阻止运行。若遇到此情况，请在终端执行：
 
