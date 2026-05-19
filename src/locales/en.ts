@@ -87,7 +87,7 @@ export default {
     confirmDeleteMcp: 'Delete "{name}" MCP?',
     importTitle: 'Import MCP Config',
     importDescription:
-      'Paste MCP server config JSON. Supports {code} format from Claude Desktop / Cursor / VS Code, or plain key-value objects.',
+      'Paste MCP server config JSON. Supports {code} format from Claude Desktop / Cursor / VS Code, MCPHub export format (with groups), or plain key-value objects.',
     importSuccess: 'Successfully parsed ({count}):',
     importSkipped: 'Skipped ({count}):',
     importSkippedReason: '(duplicate name or invalid format)',
@@ -95,6 +95,9 @@ export default {
     importEmpty: 'No server configurations found. Please check the JSON format.',
     toolRunError: 'Tool returned an error status',
     transportUndetermined: 'Cannot determine transport type: missing command or url',
+    importGroupSuccess: 'Groups imported ({count})',
+    importGroupSkipped: 'Groups skipped ({count})',
+    importGroupFailed: 'Groups failed ({count})',
   },
   group: {
     title: 'Group Management',

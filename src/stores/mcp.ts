@@ -12,6 +12,11 @@ export interface McpImportResult {
   skipped: string[];
 }
 
+export interface McpHubImportResult {
+  servers: McpImportResult;
+  groups: McpImportResult;
+}
+
 export interface CallToolResult {
   content: unknown[];
   isError: boolean | null;
@@ -343,13 +348,155 @@ export const useMcpStore = defineStore('mcp', () => {
 
       const def = serverDef as Record<string, unknown>;
       try {
-        const input = parseImportedServer(name, def);
-        await createServer(input);
+        const input = normalizeInput(parseImportedServer(name, def));
+        await invoke<McpServer>('create_mcp_server', { input });
         result.success.push(name);
+        existingNames.add(name);
       } catch (e) {
         result.failed.push({ name, error: String(e) });
       }
     }
+
+    return result;
+  }
+
+  async function importFromMcpHub(json: string): Promise<McpHubImportResult> {
+    const result: McpHubImportResult = {
+      servers: { success: [], failed: [], skipped: [] },
+      groups: { success: [], failed: [], skipped: [] },
+    };
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      throw new Error('Invalid JSON format.');
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('JSON content must be an object.');
+    }
+
+    const root = parsed as Record<string, unknown>;
+
+    // Extract mcpServers (object map)
+    const mcpServersRaw =
+      root.mcpServers && typeof root.mcpServers === 'object'
+        ? (root.mcpServers as Record<string, unknown>)
+        : {};
+
+    // Extract groups (array)
+    const groupsRaw = Array.isArray(root.groups) ? (root.groups as unknown[]) : [];
+
+    const existingServerNames = new Set(servers.value.map((s) => s.name));
+    const nameToIdMap = new Map<string, number>();
+
+    // Build initial name→id map from existing servers
+    for (const s of servers.value) {
+      nameToIdMap.set(s.name, s.id);
+    }
+
+    // Import servers — direct invoke to avoid per-item fetchServers()
+    for (const [name, serverDef] of Object.entries(mcpServersRaw)) {
+      if (typeof serverDef !== 'object' || serverDef === null) {
+        result.servers.skipped.push(name);
+        continue;
+      }
+
+      if (existingServerNames.has(name)) {
+        result.servers.skipped.push(name);
+        continue;
+      }
+
+      const def = serverDef as Record<string, unknown>;
+      try {
+        const input = normalizeInput(parseImportedServer(name, def));
+        const created = await invoke<McpServer>('create_mcp_server', { input });
+        result.servers.success.push(name);
+        existingServerNames.add(name);
+        nameToIdMap.set(name, created.id);
+      } catch (e) {
+        result.servers.failed.push({ name, error: String(e) });
+      }
+    }
+
+    // Import groups — direct invoke to avoid per-item fetchGroups()
+    const { useGroupStore } = await import('./group');
+    const groupStore = useGroupStore();
+    await groupStore.fetchGroups();
+    const existingGroupNames = new Set(groupStore.groups.map((g) => g.name));
+
+    for (const groupRaw of groupsRaw) {
+      if (typeof groupRaw !== 'object' || groupRaw === null) continue;
+      const g = groupRaw as Record<string, unknown>;
+      const groupName = typeof g.name === 'string' ? g.name : '';
+      if (!groupName) continue;
+
+      if (existingGroupNames.has(groupName)) {
+        result.groups.skipped.push(groupName);
+        continue;
+      }
+
+      try {
+        const groupServers = Array.isArray(g.servers) ? (g.servers as unknown[]) : [];
+        const serverSelections: {
+          serverId: number;
+          name: string;
+          tools: string[] | null;
+          prompts: string[] | null;
+          resources: string[] | null;
+        }[] = [];
+
+        for (const srv of groupServers) {
+          if (typeof srv !== 'object' || srv === null) continue;
+          const s = srv as Record<string, unknown>;
+          const serverName = typeof s.name === 'string' ? s.name : '';
+          if (!serverName) continue;
+
+          const serverId = nameToIdMap.get(serverName);
+          if (serverId === undefined) continue;
+
+          const mapCapability = (val: unknown): string[] | null => {
+            if (val === 'all' || val === null || val === undefined) return null;
+            if (Array.isArray(val)) return val.filter((v): v is string => typeof v === 'string');
+            return null;
+          };
+
+          serverSelections.push({
+            serverId,
+            name: serverName,
+            tools: mapCapability(s.tools),
+            prompts: mapCapability(s.prompts),
+            resources: mapCapability(s.resources),
+          });
+        }
+
+        const input = { name: groupName, config: { servers: serverSelections } };
+        await invoke('create_mcp_group', { input });
+        result.groups.success.push(groupName);
+        existingGroupNames.add(groupName);
+      } catch (e) {
+        result.groups.failed.push({ name: groupName, error: String(e) });
+      }
+    }
+
+    // Batch fetch once after all creates
+    await fetchServers();
+    await groupStore.fetchGroups();
+
+    // Auto-connect successfully imported servers (parallel)
+    const connectPromises = result.servers.success.map(async (name) => {
+      const server = servers.value.find((s) => s.name === name);
+      if (!server) return;
+      try {
+        await connectServer(server.id);
+        await refreshTools(server.id);
+      } catch {
+        // ignore auto-connect failure
+      }
+    });
+    await Promise.all(connectPromises);
+    error.value = null;
 
     return result;
   }
@@ -386,6 +533,7 @@ export const useMcpStore = defineStore('mcp', () => {
     capabilitiesOf,
     callTool,
     importServers,
+    importFromMcpHub,
   };
 });
 

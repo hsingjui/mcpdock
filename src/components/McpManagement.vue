@@ -2,7 +2,7 @@
 import { Play, Save } from '@lucide/vue';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { McpImportResult } from '../stores/mcp';
+import type { McpHubImportResult, McpImportResult } from '../stores/mcp';
 import { useMcpStore } from '../stores/mcp';
 import type { McpServer } from '../types/mcp';
 import McpImportView from './mcp/McpImportView.vue';
@@ -29,6 +29,7 @@ const showRunToolView = ref(false);
 const importJson = ref('');
 const importLoading = ref(false);
 const importResult = ref<McpImportResult | null>(null);
+const mcpHubImportResult = ref<McpHubImportResult | null>(null);
 
 const envExpanded = ref(false);
 const headersExpanded = ref(false);
@@ -524,6 +525,7 @@ function editServer(server: McpServer): void {
 function openImport(): void {
   importJson.value = '';
   importResult.value = null;
+  mcpHubImportResult.value = null;
   importLoading.value = false;
   saveScrollPosition();
   showImportView.value = true;
@@ -533,6 +535,7 @@ function closeImport(): void {
   showImportView.value = false;
   importJson.value = '';
   importResult.value = null;
+  mcpHubImportResult.value = null;
   importLoading.value = false;
   restoreScrollPosition();
 }
@@ -541,19 +544,39 @@ async function handleImport(): Promise<void> {
   if (!importJson.value.trim()) return;
   importLoading.value = true;
   importResult.value = null;
+  mcpHubImportResult.value = null;
   try {
-    const result = await store.importServers(importJson.value);
-    importResult.value = result;
-    await store.fetchServers();
-    for (const name of result.success) {
-      const server = store.servers.find((s) => s.name === name);
-      if (!server) continue;
-      try {
-        await store.connectServer(server.id);
-        await store.refreshTools(server.id);
-      } catch {
-        // ignore auto-connect failure after successful import
-      }
+    // Auto-detect format: if JSON has a "groups" array, treat as MCPHub
+    let isMcpHub = false;
+    try {
+      const parsed = JSON.parse(importJson.value);
+      isMcpHub =
+        parsed &&
+        typeof parsed === 'object' &&
+        Array.isArray((parsed as Record<string, unknown>).groups);
+    } catch {
+      // parse error will be handled by the import function
+    }
+
+    if (isMcpHub) {
+      const result = await store.importFromMcpHub(importJson.value);
+      mcpHubImportResult.value = result;
+    } else {
+      const result = await store.importServers(importJson.value);
+      importResult.value = result;
+      await store.fetchServers();
+      const connectPromises = result.success.map(async (name) => {
+        const server = store.servers.find((s) => s.name === name);
+        if (!server) return;
+        try {
+          await store.connectServer(server.id);
+          await store.refreshTools(server.id);
+        } catch {
+          // ignore auto-connect failure after successful import
+        }
+      });
+      await Promise.all(connectPromises);
+      store.error = null;
     }
   } catch {
     importResult.value = { success: [], failed: [], skipped: [] };
@@ -649,6 +672,7 @@ async function handleImport(): Promise<void> {
         :import-json="importJson"
         :import-loading="importLoading"
         :import-result="importResult"
+        :mcp-hub-import-result="mcpHubImportResult"
         :error="store.error"
         @close="closeImport"
         @submit="handleImport"

@@ -87,7 +87,7 @@ export default {
     confirmDeleteMcp: '确定删除「{name}」MCP？',
     importTitle: '导入 MCP 配置',
     importDescription:
-      '粘贴 MCP 服务器配置 JSON。支持 Claude Desktop / Cursor / VS Code 等工具的 {code} 格式，也支持直接的键值对象。',
+      '粘贴 MCP 服务器配置 JSON。支持 Claude Desktop / Cursor / VS Code 等工具的 {code} 格式、MCPHub 导出格式（含分组），也支持直接的键值对象。',
     importSuccess: '成功解析 ({count}):',
     importSkipped: '已跳过 ({count}):',
     importSkippedReason: '（同名已存在或格式无效）',
@@ -95,6 +95,9 @@ export default {
     importEmpty: '未发现可导入的服务器配置，请检查 JSON 格式。',
     toolRunError: '工具返回了错误状态',
     transportUndetermined: '无法确定传输类型：缺少 command 或 url',
+    importGroupSuccess: '分组导入成功 ({count})',
+    importGroupSkipped: '分组已跳过 ({count})',
+    importGroupFailed: '分组导入失败 ({count})',
   },
   group: {
     title: '分组管理',
