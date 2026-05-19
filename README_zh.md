@@ -177,6 +177,12 @@ pnpm lint
 
 ## 安装说明
 
+### macOS (Homebrew)
+
+```bash
+brew install --cask hsingjui/tap/mcpdock
+```
+
 > **macOS 提示：** MCPDock 目前未使用 Apple Developer 证书签名。下载并将 `MCPDock.app` 移动到 `/Applications` 后，请在终端执行以下命令以移除隔离属性：
 >
 > ```bash
@@ -270,6 +276,12 @@ mcpdock
         → 获取或连接上游 MCP 客户端
         → 转发调用 → 返回结果
 ```
+
+---
+
+## 社区
+
+[linux.do](https://linux.do)
 
 ---
 

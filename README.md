@@ -177,6 +177,12 @@ pnpm lint
 
 ## Installation
 
+### macOS (Homebrew)
+
+```bash
+brew install --cask hsingjui/tap/mcpdock
+```
+
 > **macOS Note:** MCPDock is not currently signed with an Apple Developer certificate. After downloading and moving `MCPDock.app` to `/Applications`, run the following command in Terminal to remove the quarantine attribute:
 >
 > ```bash
@@ -270,6 +276,10 @@ Client → POST http://localhost:3000/mcp/my-group (Streamable HTTP)
         → Get or connect upstream MCP client
         → Forward call → return result
 ```
+
+## Community
+
+[linux.do](https://linux.do)
 
 ---
 
