@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   Clock,
+  Database,
   Download,
   Globe,
   HeartPulse,
@@ -11,19 +12,34 @@ import {
   Save,
   Shield,
   Sun,
+  Upload,
 } from '@lucide/vue';
+import { invoke } from '@tauri-apps/api/core';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import { useMessage } from 'naive-ui';
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useGroupStore } from '../stores/group';
+import { useMcpStore } from '../stores/mcp';
 import { useSettingsStore } from '../stores/settings';
 import { useUpdaterStore } from '../stores/updater';
 import PageHeader from './PageHeader.vue';
 
+interface ImportResult {
+  servers: { imported: number; skipped: number };
+  groups: { imported: number; skipped: number };
+  settingsUpdated: boolean;
+}
+
 const store = useSettingsStore();
 const updaterStore = useUpdaterStore();
+const mcpStore = useMcpStore();
+const groupStore = useGroupStore();
 const message = useMessage();
 const { t } = useI18n();
 const initialized = ref(false);
+const exporting = ref(false);
+const importing = ref(false);
 
 const updateStatusText = computed(() => {
   if (updaterStore.checking) return t('settings.updateChecking');
@@ -108,6 +124,63 @@ async function handleRestartUpdate(): Promise<void> {
         error: updaterStore.error ?? t('common.unknownError'),
       }),
     );
+  }
+}
+
+async function handleExport(): Promise<void> {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const filePath = await save({
+      defaultPath: 'mcpdock-backup.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (!filePath) return;
+    await invoke('export_all_data', { path: filePath });
+    message.success(t('settings.exportSuccess'));
+  } catch (e) {
+    message.error(t('settings.exportFailed', { error: String(e) }));
+  } finally {
+    exporting.value = false;
+  }
+}
+
+async function handleImport(): Promise<void> {
+  if (importing.value) return;
+  importing.value = true;
+  try {
+    const filePath = await open({
+      multiple: false,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (!filePath) return;
+    const result = await invoke<ImportResult>('import_all_data', { path: filePath });
+    const serverText = String(result.servers.imported);
+    const groupText = String(result.groups.imported);
+    const settingsText = result.settingsUpdated
+      ? t('settings.importSettingsUpdated')
+      : t('settings.importSettingsSkipped');
+    message.success(
+      t('settings.importSuccess', {
+        servers: serverText,
+        groups: groupText,
+        settings: settingsText,
+      }),
+    );
+    if (result.servers.skipped > 0 || result.groups.skipped > 0) {
+      message.info(
+        t('settings.importSkipped', {
+          servers: result.servers.skipped,
+          groups: result.groups.skipped,
+        }),
+      );
+    }
+    // Refresh all stores
+    await Promise.all([mcpStore.fetchServers(), groupStore.fetchGroups(), store.fetchSettings()]);
+  } catch (e) {
+    message.error(t('settings.importFailed', { error: String(e) }));
+  } finally {
+    importing.value = false;
   }
 }
 </script>
@@ -396,6 +469,37 @@ async function handleRestartUpdate(): Promise<void> {
                 <div class="card-body">
                   <p class="hint text-center" style="margin:0">{{ t('settings.notEnabled') }}</p>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ─── Data Management ─── -->
+          <div class="card">
+            <div class="card-head">
+              <div class="card-icon bg-primary-light text-primary"><Database :size="15" /></div>
+              <div class="min-w-0 flex-1">
+                <h3 class="card-title">{{ t('settings.dataTitle') }}</h3>
+                <p class="card-desc">{{ t('settings.dataDescription') }}</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="flex gap-2">
+                <n-button
+                  size="small"
+                  :loading="exporting"
+                  @click="handleExport"
+                >
+                  <template #icon><Download :size="14" /></template>
+                  {{ t('settings.exportData') }}
+                </n-button>
+                <n-button
+                  size="small"
+                  :loading="importing"
+                  @click="handleImport"
+                >
+                  <template #icon><Upload :size="14" /></template>
+                  {{ t('settings.importData') }}
+                </n-button>
               </div>
             </div>
           </div>

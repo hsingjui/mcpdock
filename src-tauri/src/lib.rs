@@ -16,6 +16,7 @@ use tauri::{
 use commands::capability::list_mcp_capabilities;
 use commands::gateway::{get_gateway_status, restart_gateway};
 use commands::group::{create_mcp_group, delete_mcp_group, list_mcp_groups, update_mcp_group};
+use commands::import_export::{export_all_data, import_all_data};
 use commands::install_mode::install_mode;
 use commands::mcp::{
     call_mcp_tool, connect_mcp_server, create_mcp_server, delete_mcp_server, disconnect_mcp_server,
@@ -196,6 +197,7 @@ pub fn run() {
             });
             Ok(())
         })
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(
@@ -239,6 +241,8 @@ pub fn run() {
             get_gateway_status,
             restart_gateway,
             install_mode,
+            export_all_data,
+            import_all_data,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

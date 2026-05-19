@@ -77,6 +77,21 @@ function sanitize(s: AppSettings): AppSettings {
   };
 }
 
+async function syncAutostart(enabled: boolean): Promise<void> {
+  if (enabled) {
+    const registered = await isEnabled();
+    if (!registered) {
+      await enable();
+    }
+    return;
+  }
+
+  const registered = await isEnabled();
+  if (registered) {
+    await disable();
+  }
+}
+
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>(defaultSettings());
   const loading = ref(false);
@@ -116,16 +131,11 @@ export const useSettingsStore = defineStore('settings', () => {
           // Non-critical: locale resolved in-session even if persist fails
         }
       }
-      // Ensure autostart is registered in OS if setting says so
-      if (settings.value.autoStartEnabled) {
-        try {
-          const registered = await isEnabled();
-          if (!registered) {
-            await enable();
-          }
-        } catch {
-          // Non-critical
-        }
+      // Sync autostart with OS
+      try {
+        await syncAutostart(settings.value.autoStartEnabled);
+      } catch {
+        // Non-critical
       }
       // Sync i18n with the resolved locale
       i18n.global.locale.value = settings.value.locale as SupportedLocale;
@@ -151,11 +161,7 @@ export const useSettingsStore = defineStore('settings', () => {
       });
       // Sync autostart with OS
       try {
-        if (settings.value.autoStartEnabled) {
-          await enable();
-        } else {
-          await disable();
-        }
+        await syncAutostart(settings.value.autoStartEnabled);
       } catch {
         // Non-critical: autostart sync failure should not block save
       }
