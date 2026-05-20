@@ -96,7 +96,7 @@ Configure the gateway port, language, tool-name separator, auth token, proxy, ti
 | -------------------- | ---------------------------------------- | -------- |
 | Language             | UI language (Chinese / English / System) | System   |
 | Theme                | Light / Dark / System                    | System   |
-| Gateway Port         | HTTP listen port for the gateway         | 3000     |
+| Gateway Port         | HTTP listen port for the gateway         | 3100     |
 | Separator            | Prefix separator for group tool names    | `__`     |
 | Auth Token           | Bearer token for gateway endpoints       | —        |
 | Request Timeout      | Connection / tool-call timeout           | 60 s     |
@@ -268,7 +268,7 @@ mcpdock
 ### Gateway Request Flow
 
 ```
-Client → POST http://localhost:3000/mcp/my-group (Streamable HTTP)
+Client → POST http://localhost:3100/mcp/my-group (Streamable HTTP)
     → Axum router
     → Auth middleware (Bearer token check)
     → GroupHandler::call_tool

@@ -96,7 +96,7 @@
 | -------------- | ---------------------------------- | -------- |
 | 语言           | 界面语言（中文 / 英文 / 跟随系统） | 跟随系统 |
 | 主题           | 浅色 / 深色 / 跟随系统             | 跟随系统 |
-| 网关端口       | 网关 HTTP 监听端口                 | 3000     |
+| 网关端口       | 网关 HTTP 监听端口                 | 3100     |
 | 分隔符         | 分组工具名前缀分隔符               | `__`     |
 | 认证令牌       | 网关端点的 Bearer Token            | —        |
 | 请求超时       | 连接和工具调用超时时间             | 60 秒    |
@@ -268,7 +268,7 @@ mcpdock
 ### 网关请求流程
 
 ```
-客户端 → POST http://localhost:3000/mcp/my-group (Streamable HTTP)
+客户端 → POST http://localhost:3100/mcp/my-group (Streamable HTTP)
     → Axum 路由
     → 认证中间件（Bearer Token 校验）
     → GroupHandler::call_tool

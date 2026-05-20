@@ -128,13 +128,13 @@ function serverEnabled(serverId: number): boolean {
 }
 
 function groupUrl(group: McpGroup): string {
-  const port = settingsStore.settings.port || 3000;
+  const port = settingsStore.settings.port || 3100;
   const encodedName = encodeURIComponent(group.name);
   return `http://localhost:${port}/mcp/${encodedName}`;
 }
 
 function groupJson(group: McpGroup): string {
-  const port = settingsStore.settings.port || 3000;
+  const port = settingsStore.settings.port || 3100;
   const encodedName = encodeURIComponent(group.name);
   const url = `http://localhost:${port}/mcp/${encodedName}`;
   const config: Record<string, unknown> = { url };

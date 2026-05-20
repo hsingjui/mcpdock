@@ -24,7 +24,7 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            port: 3000,
+            port: 3100,
             proxy_url: String::new(),
             auth_enabled: false,
             auth_token: String::new(),
@@ -80,7 +80,7 @@ pub fn get_all(conn: &Connection) -> AppSettings {
     AppSettings {
         port: get_string(conn, "port")
             .and_then(|v| v.parse().ok())
-            .unwrap_or(3000),
+            .unwrap_or(3100),
         proxy_url: get_string(conn, "proxy_url").unwrap_or_default(),
         auth_enabled: get_string(conn, "auth_enabled")
             .and_then(|v| v.parse().ok())

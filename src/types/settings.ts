@@ -16,7 +16,7 @@ export interface AppSettings {
 
 export function defaultSettings(): AppSettings {
   return {
-    port: 3000,
+    port: 3100,
     proxyUrl: '',
     authEnabled: false,
     authToken: '',

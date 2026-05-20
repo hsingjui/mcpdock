@@ -137,7 +137,7 @@ mcpdock/
 ### Gateway Request Flow
 
 ```
-Client → POST http://localhost:3000/mcp/my-group
+Client → POST http://localhost:3100/mcp/my-group
     → Axum router → Auth middleware
     → GroupHandler → parse prefixed tool name → resolve server
     → Get/connect upstream MCP client → forward call → return result
