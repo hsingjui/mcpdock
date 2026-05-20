@@ -123,6 +123,8 @@ export default {
     partiallySelected: '部分',
     copyUrl: '复制 URL',
     copyJson: '复制 JSON',
+    globalEndpoint: '全局端点',
+    globalEndpointDescription: '通过统一的 /mcp 端点暴露全部已连接 MCP 服务器。',
   },
   settings: {
     title: '系统设置',

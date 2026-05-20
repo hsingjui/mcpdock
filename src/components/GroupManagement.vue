@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Save } from '@lucide/vue';
+import { Copy, Save } from '@lucide/vue';
 import { useMessage } from 'naive-ui';
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -127,16 +127,7 @@ function serverEnabled(serverId: number): boolean {
   return mcpStore.servers.find((s) => s.id === serverId)?.enabled ?? false;
 }
 
-function groupUrl(group: McpGroup): string {
-  const port = settingsStore.settings.port || 3100;
-  const encodedName = encodeURIComponent(group.name);
-  return `http://localhost:${port}/mcp/${encodedName}`;
-}
-
-function groupJson(group: McpGroup): string {
-  const port = settingsStore.settings.port || 3100;
-  const encodedName = encodeURIComponent(group.name);
-  const url = `http://localhost:${port}/mcp/${encodedName}`;
+function endpointJson(url: string): string {
   const config: Record<string, unknown> = { url };
   if (settingsStore.settings.authEnabled && settingsStore.settings.authToken.trim()) {
     config.headers = {
@@ -145,6 +136,25 @@ function groupJson(group: McpGroup): string {
     };
   }
   return JSON.stringify({ mcpServers: { mcpdock: config } }, null, 2);
+}
+
+function globalEndpointUrl(): string {
+  const port = settingsStore.settings.port || 3100;
+  return `http://localhost:${port}/mcp`;
+}
+
+function globalEndpointJson(): string {
+  return endpointJson(globalEndpointUrl());
+}
+
+function groupUrl(group: McpGroup): string {
+  const port = settingsStore.settings.port || 3100;
+  const encodedName = encodeURIComponent(group.name);
+  return `http://localhost:${port}/mcp/${encodedName}`;
+}
+
+function groupJson(group: McpGroup): string {
+  return endpointJson(groupUrl(group));
 }
 
 async function copyToClipboard(text: string, label: string): Promise<void> {
@@ -160,6 +170,14 @@ const copyOptions = [
   { label: t('group.copyUrl'), key: 'url' },
   { label: t('group.copyJson'), key: 'json' },
 ];
+
+function handleGlobalCopy(key: string): void {
+  if (key === 'url') {
+    void copyToClipboard(globalEndpointUrl(), 'URL');
+  } else if (key === 'json') {
+    void copyToClipboard(globalEndpointJson(), 'JSON');
+  }
+}
 
 function handleCopy(group: McpGroup, key: string): void {
   if (key === 'url') {
@@ -189,21 +207,44 @@ function statusText(server: McpServer): string {
     <PageHeader :title="t('group.title')" :description="t('group.description')" />
 
     <div ref="scrollContainer" class="min-h-0 flex-1 overflow-y-auto px-6 pb-24 md:px-8">
-      <GroupList
-        v-if="!showForm"
-        :groups="groups"
-        :loading="groupStore.loading"
-        :error="groupStore.error"
-        :copy-options="copyOptions"
-        :group-url="groupUrl"
-        :server-enabled="serverEnabled"
-        :selected-count="selectedCount"
-        :group-total-count="groupTotalCount"
-        @create="openCreate"
-        @edit="openEdit"
-        @delete="handleDelete"
-        @copy="handleCopy"
-      />
+      <div v-if="!showForm" class="mt-4 flex flex-col gap-4">
+        <div class="flex flex-col gap-3 rounded-xl border border-primary/20 bg-info-soft p-5 shadow-soft">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h2 class="text-base font-semibold text-main">{{ t('group.globalEndpoint') }}</h2>
+              <p class="mt-1 text-sm text-sub">{{ t('group.globalEndpointDescription') }}</p>
+            </div>
+            <n-dropdown :options="copyOptions" trigger="click" @select="handleGlobalCopy">
+              <n-button quaternary size="small" class="shrink-0">
+                <template #icon>
+                  <Copy class="h-3.5 w-3.5" />
+                </template>
+              </n-button>
+            </n-dropdown>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border border-light bg-base px-3 py-2">
+            <div class="flex min-w-0 items-center gap-2">
+              <span class="shrink-0 text-xs font-medium text-disabled">URL</span>
+              <span class="truncate text-xs font-mono text-main select-all">{{ globalEndpointUrl() }}</span>
+            </div>
+          </div>
+        </div>
+
+        <GroupList
+          :groups="groups"
+          :loading="groupStore.loading"
+          :error="groupStore.error"
+          :copy-options="copyOptions"
+          :group-url="groupUrl"
+          :server-enabled="serverEnabled"
+          :selected-count="selectedCount"
+          :group-total-count="groupTotalCount"
+          @create="openCreate"
+          @edit="openEdit"
+          @delete="handleDelete"
+          @copy="handleCopy"
+        />
+      </div>
 
       <GroupForm
         v-else

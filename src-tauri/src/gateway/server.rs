@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 use tower_http::cors::CorsLayer;
 
 use crate::db::mcp_group;
-use crate::gateway::handler::GroupHandler;
+use crate::gateway::handler::{GlobalHandler, GroupHandler};
 use crate::state::AppState;
 
 /// State for the running gateway server.
@@ -59,6 +59,28 @@ pub async fn start_gateway(
     let cancellation_token = CancellationToken::new();
 
     let mut router = Router::new();
+
+    let global_app_handle = app_handle.clone();
+    let global_config = StreamableHttpServerConfig::default()
+        .with_sse_keep_alive(None)
+        .with_stateful_mode(true)
+        .with_json_response(true)
+        .with_cancellation_token(cancellation_token.child_token());
+    let global_service: StreamableHttpService<GlobalHandler, LocalSessionManager> =
+        StreamableHttpService::new(
+            move || {
+                Ok(GlobalHandler {
+                    app_handle: global_app_handle.clone(),
+                })
+            },
+            Arc::new(LocalSessionManager::default()),
+            global_config,
+        );
+    // Register both /mcp and /mcp/ so clients that normalize base URLs with
+    // a trailing slash can still reach the global endpoint, while group routes
+    // under /mcp/{group} remain handled by their more specific nested routes.
+    router = router.route_service("/mcp", global_service.clone());
+    router = router.route_service("/mcp/", global_service);
 
     for group in &groups {
         let group_name = group.name.clone();

@@ -124,6 +124,8 @@ export default {
     partiallySelected: 'Partial',
     copyUrl: 'Copy URL',
     copyJson: 'Copy JSON',
+    globalEndpoint: 'Global Endpoint',
+    globalEndpointDescription: 'Expose all connected MCP servers through one shared /mcp endpoint.',
   },
   settings: {
     title: 'Settings',

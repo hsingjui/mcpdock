@@ -1,7 +1,7 @@
 use rmcp::model::{GetPromptRequestParams, GetPromptResult, ListPromptsResult, Prompt};
 use tauri::Manager;
 
-use crate::gateway::handler::GroupHandler;
+use crate::gateway::handler::{find_peer_by_id, with_request_timeout, GroupHandler};
 use crate::state::AppState;
 
 pub(super) async fn list_prompts(
@@ -142,54 +142,17 @@ pub(super) async fn get_prompt(
         }
     }
 
-    let state = handler.app_handle.state::<AppState>();
-
     // Clone the peer and release the lock before awaiting.
     let peer = {
-        let clients = state.clients.lock().await;
-        let holder = clients.get(&server_sel.server_id).ok_or_else(|| {
-            rmcp::ErrorData::internal_error(
-                format!("MCP server '{server_name}' is not connected"),
-                None,
-            )
-        })?;
-        let client = holder.client.as_ref().ok_or_else(|| {
-            rmcp::ErrorData::internal_error(
-                format!("MCP server '{server_name}' client is unavailable"),
-                None,
-            )
-        })?;
-        client.peer().clone()
+        let state = handler.app_handle.state::<AppState>();
+        find_peer_by_id(&state, server_sel.server_id, &server_name).await?
     };
 
     let params = GetPromptRequestParams::new(original_name)
         .with_arguments(request.arguments.unwrap_or_default());
 
-    let result = match timeout {
-        Some(dur) => tokio::time::timeout(dur, peer.get_prompt(params))
-            .await
-            .map_err(|_| {
-                rmcp::ErrorData::internal_error(
-                    format!(
-                        "Get prompt from server '{server_name}' timed out after {}ms",
-                        dur.as_millis()
-                    ),
-                    None,
-                )
-            })?
-            .map_err(|e| {
-                rmcp::ErrorData::internal_error(
-                    format!("Get prompt failed on server '{server_name}': {e}"),
-                    None,
-                )
-            })?,
-        None => peer.get_prompt(params).await.map_err(|e| {
-            rmcp::ErrorData::internal_error(
-                format!("Get prompt failed on server '{server_name}': {e}"),
-                None,
-            )
-        })?,
-    };
+    let result =
+        with_request_timeout(timeout, &server_name, "Get prompt", peer.get_prompt(params)).await?;
 
     Ok(result)
 }
