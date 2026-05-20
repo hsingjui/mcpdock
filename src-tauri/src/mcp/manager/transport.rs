@@ -71,12 +71,19 @@ fn build_windows_stdio_command(command: &str, args: &[String]) -> tokio::process
         cmd.arg("/C");
         cmd.arg(command);
         cmd.args(args);
+        cmd.creation_flags(windows_create_no_window_flag());
         return cmd;
     }
 
     let mut cmd = tokio::process::Command::new(command);
     cmd.args(args);
+    cmd.creation_flags(windows_create_no_window_flag());
     cmd
+}
+
+#[cfg(target_os = "windows")]
+const fn windows_create_no_window_flag() -> u32 {
+    0x0800_0000
 }
 
 #[cfg(target_os = "windows")]
