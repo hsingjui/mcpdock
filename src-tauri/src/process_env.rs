@@ -72,6 +72,18 @@ pub fn repair_process_path() {
             }
         }
     }
+
+    #[cfg(windows)]
+    {
+        let current_path = std::env::var("PATH").ok();
+        let user_path = read_windows_registry_path(windows_user_environment_key());
+        let system_path = read_windows_registry_path(windows_system_environment_key());
+        let merged_path = merge_path_strings(&[current_path, user_path, system_path], true);
+        if !merged_path.is_empty() {
+            // SAFETY: updating PATH during single-threaded app startup before background work begins.
+            unsafe { std::env::set_var("PATH", merged_path) };
+        }
+    }
 }
 
 pub fn build_stdio_environment(
@@ -181,10 +193,20 @@ fn build_stdio_environment_for_platform(
 
     let server_path = path_value_for_platform(server_env, is_windows).cloned();
     let parent_path = path_value_for_platform(parent_env, is_windows).cloned();
+    #[cfg(windows)]
+    let registry_user_path = read_windows_registry_path(windows_user_environment_key());
+    #[cfg(not(windows))]
+    let registry_user_path: Option<String> = None;
+    #[cfg(windows)]
+    let registry_system_path = read_windows_registry_path(windows_system_environment_key());
+    #[cfg(not(windows))]
+    let registry_system_path: Option<String> = None;
     let merged_path = merge_path_strings(
         &[
             server_path,
             parent_path,
+            registry_user_path,
+            registry_system_path,
             Some(join_paths(default_entries, is_windows)),
         ],
         is_windows,
@@ -203,7 +225,12 @@ fn merge_path_strings(values: &[Option<String>], is_windows: bool) -> String {
 
     for value in values.iter().flatten() {
         for entry in split_path(value, is_windows) {
-            if seen.insert(entry.clone()) {
+            let dedupe_key = if is_windows {
+                entry.to_ascii_lowercase()
+            } else {
+                entry.clone()
+            };
+            if seen.insert(dedupe_key) {
                 merged.push(entry);
             }
         }
@@ -242,8 +269,21 @@ fn split_path(value: &str, is_windows: bool) -> Vec<String> {
         .split(separator)
         .map(str::trim)
         .filter(|entry| !entry.is_empty())
-        .map(str::to_string)
+        .map(|entry| trim_matching_quotes(entry).to_string())
+        .filter(|entry| !entry.is_empty())
         .collect()
+}
+
+fn trim_matching_quotes(value: &str) -> &str {
+    match value.as_bytes() {
+        [first, middle @ .., last]
+            if !middle.is_empty()
+                && ((*first == b'"' && *last == b'"') || (*first == b'\'' && *last == b'\'')) =>
+        {
+            std::str::from_utf8(middle).unwrap_or(value).trim()
+        }
+        _ => value,
+    }
 }
 
 fn env_value_for_platform<'a>(
@@ -319,6 +359,33 @@ fn is_executable_path(path: &Path) -> bool {
 
         matches!(extension.as_str(), "exe" | "cmd" | "bat" | "com")
     }
+}
+
+#[cfg(windows)]
+const fn windows_user_environment_key() -> &'static str {
+    "Environment"
+}
+
+#[cfg(windows)]
+const fn windows_system_environment_key() -> &'static str {
+    r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+}
+
+#[cfg(windows)]
+fn read_windows_registry_path(subkey: &str) -> Option<String> {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+
+    let hive = if subkey == windows_user_environment_key() {
+        RegKey::predef(HKEY_CURRENT_USER)
+    } else {
+        RegKey::predef(HKEY_LOCAL_MACHINE)
+    };
+
+    let key = hive.open_subkey(subkey).ok()?;
+    key.get_value::<String, _>("Path")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -408,6 +475,32 @@ mod tests {
         assert_eq!(
             path_value_for_platform(&env, true).map(String::as_str),
             Some(r"C:\Tools")
+        );
+    }
+
+    #[test]
+    fn windows_merge_path_is_case_insensitive() {
+        let merged = merge_path_strings(
+            &[
+                Some(r"C:\Tools;C:\NodeJS".to_string()),
+                Some(r"c:\tools;C:\Other".to_string()),
+            ],
+            true,
+        );
+
+        assert_eq!(merged, r"C:\Tools;C:\NodeJS;C:\Other");
+    }
+
+    #[test]
+    fn split_path_trims_wrapped_quotes() {
+        let entries = split_path(r#""C:\Program Files\nodejs";C:\Tools"#, true);
+
+        assert_eq!(
+            entries,
+            vec![
+                r#"C:\Program Files\nodejs"#.to_string(),
+                r#"C:\Tools"#.to_string()
+            ]
         );
     }
 }
