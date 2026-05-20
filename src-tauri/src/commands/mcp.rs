@@ -162,12 +162,13 @@ pub async fn refresh_mcp_tools(
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn call_mcp_tool(
+    app_handle: AppHandle,
     state: State<'_, AppState>,
     id: i64,
     tool_name: String,
     arguments: Option<serde_json::Map<String, serde_json::Value>>,
 ) -> Result<CallToolResult, String> {
-    let result = manager::call_tool(&state, id, &tool_name, arguments)
+    let result = manager::call_tool(&app_handle, &state, id, &tool_name, arguments)
         .await
         .map_err(format_error_chain)?;
     Ok(result)

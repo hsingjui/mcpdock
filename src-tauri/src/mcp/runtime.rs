@@ -3,6 +3,7 @@ use rmcp::service::RunningService;
 use rmcp::RoleClient;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,23 +35,39 @@ pub struct DiscoveryResult {
 }
 
 pub struct McpClientHolder {
+    pub connection_id: Uuid,
     pub client: Option<RunningService<RoleClient, ()>>,
     pub keep_alive_handle: Option<JoinHandle<()>>,
+    pub monitor_handle: Option<JoinHandle<()>>,
 }
 
 impl McpClientHolder {
-    pub const fn new(client: RunningService<RoleClient, ()>) -> Self {
+    pub const fn new(client: RunningService<RoleClient, ()>, connection_id: Uuid) -> Self {
         Self {
+            connection_id,
             client: Some(client),
             keep_alive_handle: None,
+            monitor_handle: None,
+        }
+    }
+
+    pub fn abort_background_tasks(&mut self) {
+        if let Some(handle) = self.keep_alive_handle.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.monitor_handle.take() {
+            handle.abort();
+        }
+    }
+
+    pub fn abort_keep_alive_task(&mut self) {
+        if let Some(handle) = self.keep_alive_handle.take() {
+            handle.abort();
         }
     }
 
     pub async fn close(&mut self) -> anyhow::Result<()> {
-        // Cancel the keep-alive task first
-        if let Some(handle) = self.keep_alive_handle.take() {
-            handle.abort();
-        }
+        self.abort_background_tasks();
         if let Some(client) = self.client.as_mut() {
             client.close().await.context("Failed to close MCP client")?;
         }

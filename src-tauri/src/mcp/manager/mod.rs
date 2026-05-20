@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use anyhow::{bail, Context};
 use tauri::{AppHandle, Manager};
+use uuid::Uuid;
 
 use crate::commands::mcp::CallToolResult;
 use crate::db::mcp_capability;
@@ -81,31 +82,43 @@ pub async fn connect(
                     &discovered.resource_templates,
                 )?;
             }
-            // Start keep-alive ping task if enabled
-            let keep_alive_handle = {
+
+            let connection_id = Uuid::new_v4();
+            let monitor_client = client.peer().clone();
+            let keep_alive_enabled = {
                 let settings = state.settings.read().await;
-                if settings.keep_alive_enabled {
-                    let peer = client.peer().clone();
-                    let interval = Duration::from_millis(settings.keep_alive_interval_ms);
-                    let server_name = server.name.clone();
-                    Some(tokio::spawn(async move {
-                        let mut ticker = tokio::time::interval(interval);
-                        // First tick fires immediately, skip it
-                        ticker.tick().await;
-                        loop {
-                            ticker.tick().await;
-                            if let Err(e) = peer.list_all_tools().await {
-                                eprintln!("Keep-alive ping failed for server '{server_name}': {e}");
-                            }
-                        }
-                    }))
-                } else {
-                    None
-                }
+                settings.keep_alive_enabled
             };
 
-            let mut holder = McpClientHolder::new(client);
+            // Start keep-alive ping task if enabled
+            let keep_alive_handle = if keep_alive_enabled {
+                let peer = client.peer().clone();
+                let interval = {
+                    let settings = state.settings.read().await;
+                    Duration::from_millis(settings.keep_alive_interval_ms)
+                };
+                let server_name = server.name.clone();
+                Some(tokio::spawn(async move {
+                    let mut ticker = tokio::time::interval(interval);
+                    // First tick fires immediately, skip it
+                    ticker.tick().await;
+                    loop {
+                        ticker.tick().await;
+                        if let Err(e) = peer.list_all_tools().await {
+                            eprintln!("Keep-alive ping failed for server '{server_name}': {e}");
+                        }
+                    }
+                }))
+            } else {
+                None
+            };
+
+            let monitor_handle =
+                spawn_runtime_monitor(app_handle.clone(), server_id, connection_id, monitor_client);
+
+            let mut holder = McpClientHolder::new(client, connection_id);
             holder.keep_alive_handle = keep_alive_handle;
+            holder.monitor_handle = Some(monitor_handle);
             {
                 let mut clients = state.clients.lock().await;
                 clients.insert(server_id, holder);
@@ -252,6 +265,7 @@ fn load_server(state: &AppState, server_id: i64) -> anyhow::Result<McpServerRow>
 }
 
 pub async fn call_tool(
+    app_handle: &AppHandle,
     state: &AppState,
     server_id: i64,
     tool_name: &str,
@@ -287,9 +301,19 @@ pub async fn call_tool(
         tokio::time::timeout(dur, peer.call_tool(params))
             .await
             .map_err(|_| anyhow::anyhow!("Tool call timed out after {}ms", dur.as_millis()))?
-            .context("Tool call failed")?
+            .context("Tool call failed")
     } else {
-        peer.call_tool(params).await.context("Tool call failed")?
+        peer.call_tool(params).await.context("Tool call failed")
+    };
+
+    let result = match result {
+        Ok(result) => result,
+        Err(error) => {
+            if should_mark_runtime_disconnected(&error) {
+                let _ = mark_runtime_disconnected(app_handle, state, server_id, &error).await;
+            }
+            return Err(error);
+        }
     };
 
     let content: Vec<serde_json::Value> = result
@@ -302,4 +326,91 @@ pub async fn call_tool(
         content,
         is_error: result.is_error,
     })
+}
+
+fn spawn_runtime_monitor(
+    app_handle: AppHandle,
+    server_id: i64,
+    connection_id: Uuid,
+    peer: rmcp::service::Peer<rmcp::RoleClient>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            if peer.is_transport_closed() {
+                let error = anyhow::anyhow!("Transport closed");
+                let _ = mark_runtime_disconnected_if_current(
+                    &app_handle,
+                    server_id,
+                    connection_id,
+                    &error,
+                )
+                .await;
+                break;
+            }
+        }
+    })
+}
+
+fn should_mark_runtime_disconnected(error: &anyhow::Error) -> bool {
+    let message = format!("{error:#}").to_ascii_lowercase();
+    message.contains("transport closed")
+        || message.contains("connection closed")
+        || message.contains("channel closed")
+        || message.contains("broken pipe")
+        || message.contains("pipe has been ended")
+        || message.contains("pipe is being closed")
+}
+
+async fn mark_runtime_disconnected(
+    app_handle: &AppHandle,
+    state: &AppState,
+    server_id: i64,
+    error: &anyhow::Error,
+) -> anyhow::Result<()> {
+    let mut removed = state.clients.lock().await.remove(&server_id);
+    if let Some(holder) = removed.as_mut() {
+        holder.abort_keep_alive_task();
+    }
+
+    runtime_state::update_runtime(state, server_id, |runtime| {
+        runtime.connected = false;
+        runtime.connecting = false;
+        runtime.error = Some(format!("{error:#}"));
+        runtime.discovered_at = None;
+    })?;
+    runtime_state::emit_runtime(app_handle, state, server_id)
+}
+
+async fn mark_runtime_disconnected_if_current(
+    app_handle: &AppHandle,
+    server_id: i64,
+    connection_id: Uuid,
+    error: &anyhow::Error,
+) -> anyhow::Result<()> {
+    let state = app_handle.state::<AppState>();
+    let removed = {
+        let mut clients = state.clients.lock().await;
+        if clients
+            .get(&server_id)
+            .is_some_and(|holder| holder.connection_id == connection_id)
+        {
+            clients.remove(&server_id)
+        } else {
+            None
+        }
+    };
+
+    let Some(mut holder) = removed else {
+        return Ok(());
+    };
+    holder.abort_keep_alive_task();
+
+    runtime_state::update_runtime(&state, server_id, |runtime| {
+        runtime.connected = false;
+        runtime.connecting = false;
+        runtime.error = Some(format!("{error:#}"));
+        runtime.discovered_at = None;
+    })?;
+    runtime_state::emit_runtime(app_handle, &state, server_id)
 }
