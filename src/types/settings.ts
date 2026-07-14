@@ -12,6 +12,7 @@ export interface AppSettings {
   autoStartEnabled: boolean;
   autoStartHidden: boolean;
   theme: 'light' | 'dark' | 'system';
+  lowResourceModeEnabled: boolean;
 }
 
 export function defaultSettings(): AppSettings {
@@ -29,5 +30,6 @@ export function defaultSettings(): AppSettings {
     autoStartEnabled: false,
     autoStartHidden: false,
     theme: 'system',
+    lowResourceModeEnabled: true,
   };
 }

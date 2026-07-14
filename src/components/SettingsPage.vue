@@ -5,6 +5,7 @@ import {
   Download,
   Globe,
   HeartPulse,
+  Moon,
   Network,
   Power,
   RotateCcw,
@@ -272,6 +273,21 @@ async function handleImport(): Promise<void> {
                 <n-input v-model:value="store.settings.proxyUrl" placeholder="http://127.0.0.1:7890" clearable size="small" />
                 <p class="hint">{{ t('settings.proxyUrlHint') }}</p>
               </div>
+            </div>
+          </div>
+
+          <!-- ─── Lite Mode ─── -->
+          <div class="card">
+            <div class="card-head">
+              <div class="card-icon bg-violet-soft text-violet"><Moon :size="15" /></div>
+              <div class="min-w-0 flex-1">
+                <h3 class="card-title">{{ t('settings.lowResourceTitle') }}</h3>
+                <p class="card-desc">{{ t('settings.lowResourceDescription') }}</p>
+              </div>
+              <n-switch v-model:value="store.settings.lowResourceModeEnabled" size="small" />
+            </div>
+            <div class="card-body">
+              <p class="hint" style="margin:0">{{ t('settings.lowResourceHint') }}</p>
             </div>
           </div>
 

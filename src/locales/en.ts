@@ -185,6 +185,11 @@ export default {
     restartUpdate: 'Restart to Update',
     zhCN: '简体中文',
     en: 'English',
+    lowResourceTitle: 'Lite Mode',
+    lowResourceDescription:
+      'Release the UI when the main window is closed; the background gateway keeps running',
+    lowResourceHint:
+      'When enabled, closing the main window immediately releases the UI and discards unsaved temporary state to reduce memory usage. Turn this off to keep a hidden window instead.',
     dataTitle: 'Data Management',
     dataDescription: 'Export or import application data',
     exportData: 'Export Data',

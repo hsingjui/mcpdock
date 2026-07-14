@@ -498,8 +498,8 @@ mod tests {
         assert_eq!(
             entries,
             vec![
-                r#"C:\Program Files\nodejs"#.to_string(),
-                r#"C:\Tools"#.to_string()
+                r"C:\Program Files\nodejs".to_string(),
+                r"C:\Tools".to_string()
             ]
         );
     }

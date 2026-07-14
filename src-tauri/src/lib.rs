@@ -1,11 +1,11 @@
 mod commands;
 mod db;
 mod gateway;
+mod main_window;
 mod mcp;
 mod process_env;
 mod state;
 
-#[cfg(target_os = "macos")]
 use tauri::RunEvent;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -46,11 +46,20 @@ pub fn run() {
             // 开机自启模式：检测 --autostart 参数，根据设置决定是否隐藏窗口
             let is_autostart = std::env::args().any(|arg| arg == "--autostart");
             let start_hidden = is_autostart && settings.auto_start_hidden;
+            let low_resource_enabled = settings.low_resource_mode_enabled;
             let state = AppState::new(db, settings);
             app.manage(state);
 
             if is_autostart && start_hidden {
-                if let Some(window) = app.get_webview_window("main") {
+                if low_resource_enabled {
+                    // 低占用模式：销毁初始 UI，仅保留后台
+                    main_window::destroy_main_window(app.handle());
+                    #[cfg(target_os = "macos")]
+                    {
+                        app.set_dock_visibility(false);
+                        app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    }
+                } else if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
                     #[cfg(target_os = "macos")]
                     {
@@ -61,8 +70,9 @@ pub fn run() {
             }
 
             // macOS: 启动时显示 Dock 图标（带小圆点）
+            // 开机隐藏时不恢复 Dock，保持托盘后台状态
             #[cfg(target_os = "macos")]
-            {
+            if !(is_autostart && start_hidden) {
                 let _: () = app.set_dock_visibility(true);
                 app.set_activation_policy(tauri::ActivationPolicy::Regular);
             }
@@ -89,27 +99,14 @@ pub fn run() {
                 .icon(tray_icon)
                 .menu(&tray_menu)
                 .tooltip("MCPDock")
-                .on_menu_event(|app, event| {
-                    match event.id().as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.unminimize();
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                // macOS: 重新显示 Dock 图标（带小圆点）
-                                #[cfg(target_os = "macos")]
-                                {
-                                    let _ = app.set_dock_visibility(true);
-                                    let _ =
-                                        app.set_activation_policy(tauri::ActivationPolicy::Regular);
-                                }
-                            }
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => {
+                        main_window::show_or_create_main_window(app);
                     }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -118,40 +115,15 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                            // macOS: 重新显示 Dock 图标（带小圆点）
-                            #[cfg(target_os = "macos")]
-                            {
-                                let _ = app.set_dock_visibility(true);
-                                let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
-                            }
-                        }
+                        main_window::show_or_create_main_window(tray.app_handle());
                     }
                 })
                 .build(app)?;
 
-            // 窗口关闭时隐藏到托盘，不退出
+            // 窗口关闭时隐藏到托盘，不退出；低占用模式开启时进一步销毁 WebView
             // macOS: 同时隐藏 Dock 图标（小圆点消失），只保留托盘图标
             if let Some(window) = app.get_webview_window("main") {
-                let window_clone = window.clone();
-                window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = window_clone.hide();
-                        // macOS: 隐藏 Dock 图标，仅保留系统托盘
-                        #[cfg(target_os = "macos")]
-                        {
-                            let _ = window_clone.app_handle().set_dock_visibility(false);
-                            let _ = window_clone
-                                .app_handle()
-                                .set_activation_policy(tauri::ActivationPolicy::Accessory);
-                        }
-                    }
-                });
+                main_window::install_close_handler(&window);
             }
 
             let app_handle = app.handle().clone();
@@ -207,18 +179,8 @@ pub fn run() {
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // 第二实例启动时，将已有窗口弹出并聚焦
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-                // macOS: 恢复 Dock 图标
-                #[cfg(target_os = "macos")]
-                {
-                    let _ = app.set_dock_visibility(true);
-                    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
-                }
-            }
+            // 第二实例启动时，重建或显示并聚焦主窗口
+            main_window::show_or_create_main_window(app);
         }))
         .invoke_handler(tauri::generate_handler![
             list_mcp_servers,
@@ -247,17 +209,18 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
+            // 销毁最后一个窗口时不退出，保持托盘后台运行；
+            // 程序化退出（带退出码）不拦截。
+            if let RunEvent::ExitRequested { code, api, .. } = &event {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
             #[cfg(target_os = "macos")]
             {
                 if let RunEvent::Reopen { .. } = event {
-                    // macOS: 点击 Dock 图标重新激活应用时，恢复窗口和 Dock 图标
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        let _ = window.unminimize();
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                        let _ = app_handle.set_dock_visibility(true);
-                        let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
-                    }
+                    // macOS: 点击 Dock 图标重新激活应用时，重建或恢复窗口和 Dock 图标
+                    main_window::show_or_create_main_window(app_handle);
                 }
             }
             #[cfg(not(target_os = "macos"))]

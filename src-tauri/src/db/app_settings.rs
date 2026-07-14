@@ -2,6 +2,11 @@ use anyhow::Context;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
+/// Default value for `low_resource_mode_enabled` when missing from JSON/DB.
+const fn default_true() -> bool {
+    true
+}
+
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,6 +24,11 @@ pub struct AppSettings {
     pub auto_start_enabled: bool,
     pub auto_start_hidden: bool,
     pub theme: String,
+    /// When enabled, closing the main window destroys the WebView to release
+    /// UI resources while the background gateway keeps running. Defaults to
+    /// `true` for new and existing installations.
+    #[serde(default = "default_true")]
+    pub low_resource_mode_enabled: bool,
 }
 
 impl Default for AppSettings {
@@ -37,6 +47,7 @@ impl Default for AppSettings {
             auto_start_enabled: false,
             auto_start_hidden: false,
             theme: "system".to_string(),
+            low_resource_mode_enabled: true,
         }
     }
 }
@@ -56,6 +67,7 @@ const SETTINGS_KEYS: &[&str] = &[
     "auto_start_enabled",
     "auto_start_hidden",
     "theme",
+    "low_resource_mode_enabled",
 ];
 
 fn get_string(conn: &Connection, key: &str) -> Option<String> {
@@ -108,6 +120,9 @@ pub fn get_all(conn: &Connection) -> AppSettings {
             .and_then(|v| v.parse().ok())
             .unwrap_or(false),
         theme: get_string(conn, "theme").unwrap_or_else(|| "system".to_string()),
+        low_resource_mode_enabled: get_string(conn, "low_resource_mode_enabled")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(true),
     }
 }
 
@@ -141,6 +156,10 @@ pub fn update_all(conn: &Connection, settings: &AppSettings) -> anyhow::Result<A
         ),
         ("auto_start_hidden", settings.auto_start_hidden.to_string()),
         ("theme", settings.theme.clone()),
+        (
+            "low_resource_mode_enabled",
+            settings.low_resource_mode_enabled.to_string(),
+        ),
     ];
 
     for (key, value) in &pairs {
@@ -173,10 +192,88 @@ pub fn ensure_defaults(conn: &Connection) -> anyhow::Result<()> {
                 "auto_start_enabled" => defaults.auto_start_enabled.to_string(),
                 "auto_start_hidden" => defaults.auto_start_hidden.to_string(),
                 "theme" => defaults.theme.clone(),
+                "low_resource_mode_enabled" => defaults.low_resource_mode_enabled.to_string(),
                 _ => String::new(),
             };
             upsert(conn, key, &value)?;
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mem_db() -> Connection {
+        Connection::open_in_memory().unwrap()
+    }
+
+    #[test]
+    fn default_has_low_resource_mode_enabled_true() {
+        let s = AppSettings::default();
+        assert!(s.low_resource_mode_enabled);
+    }
+
+    #[test]
+    fn missing_db_key_defaults_to_true() {
+        let conn = mem_db();
+        conn.execute_batch("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            .unwrap();
+        let s = get_all(&conn);
+        assert!(s.low_resource_mode_enabled);
+    }
+
+    #[test]
+    fn db_round_trip_persists_low_resource_mode() {
+        let conn = mem_db();
+        conn.execute_batch("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            .unwrap();
+        let s = AppSettings {
+            low_resource_mode_enabled: false,
+            ..AppSettings::default()
+        };
+        let updated = update_all(&conn, &s).unwrap();
+        assert!(!updated.low_resource_mode_enabled);
+        let reread = get_all(&conn);
+        assert!(!reread.low_resource_mode_enabled);
+    }
+
+    #[test]
+    fn old_json_without_field_defaults_true() {
+        // Simulates importing a backup that predates the new field.
+        let json = r#"{
+            "port": 3100,
+            "proxyUrl": "",
+            "authEnabled": false,
+            "authToken": "",
+            "requestTimeoutEnabled": true,
+            "requestTimeoutMs": 60000,
+            "keepAliveEnabled": false,
+            "keepAliveIntervalMs": 60000,
+            "gatewaySeparator": "__",
+            "locale": "auto",
+            "autoStartEnabled": false,
+            "autoStartHidden": false,
+            "theme": "system"
+        }"#;
+        let s: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(s.low_resource_mode_enabled);
+    }
+
+    #[test]
+    fn ensure_defaults_populates_low_resource_mode() {
+        let conn = mem_db();
+        conn.execute_batch(
+            "CREATE TABLE app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )",
+        )
+        .unwrap();
+        ensure_defaults(&conn).unwrap();
+        let s = get_all(&conn);
+        assert!(s.low_resource_mode_enabled);
+    }
 }

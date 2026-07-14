@@ -184,6 +184,10 @@ export default {
     restartUpdate: '重启更新',
     zhCN: '简体中文',
     en: 'English',
+    lowResourceTitle: '轻量模式',
+    lowResourceDescription: '关闭主窗口时释放界面资源，后台网关继续运行',
+    lowResourceHint:
+      '开启后，关闭主窗口会立即释放界面并丢弃未保存的临时状态，以降低内存占用；需要时可关闭此项以保留隐藏窗口。',
     dataTitle: '数据管理',
     dataDescription: '导出或导入应用数据',
     exportData: '导出数据',
