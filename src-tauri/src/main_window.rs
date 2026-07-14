@@ -43,6 +43,19 @@ pub fn show_or_create_main_window(app: &AppHandle) {
     }
 }
 
+/// Create the main window but keep it hidden.  Used for autostart-hidden
+/// mode when low-resource mode is disabled (window hidden but not destroyed).
+pub fn create_hidden_main_window(app: &AppHandle) {
+    match create_main_window(app) {
+        Ok(window) => {
+            install_close_handler(&window);
+        }
+        Err(e) => {
+            eprintln!("Failed to create hidden main window: {e}");
+        }
+    }
+}
+
 /// Recreate the main window from the `tauri.conf.json` window config whose
 /// label matches [`MAIN_LABEL`].
 fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
@@ -103,16 +116,6 @@ async fn read_low_resource_enabled(app: &AppHandle) -> bool {
     match app.try_state::<AppState>() {
         Some(state) => state.settings.read().await.low_resource_mode_enabled,
         None => true,
-    }
-}
-
-/// Destroy the main window immediately, used for the auto-start-hidden path
-/// when low-resource mode is enabled.
-pub fn destroy_main_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window(MAIN_LABEL) {
-        if let Err(e) = window.destroy() {
-            eprintln!("Failed to destroy main window during startup: {e}");
-        }
     }
 }
 

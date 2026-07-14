@@ -50,29 +50,24 @@ pub fn run() {
             let state = AppState::new(db, settings);
             app.manage(state);
 
-            if is_autostart && start_hidden {
-                if low_resource_enabled {
-                    // 低占用模式：销毁初始 UI，仅保留后台
-                    main_window::destroy_main_window(app.handle());
-                    #[cfg(target_os = "macos")]
-                    {
-                        app.set_dock_visibility(false);
-                        app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                    }
-                } else if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
-                    #[cfg(target_os = "macos")]
-                    {
-                        app.set_dock_visibility(false);
-                        app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                    }
-                }
+            // 窗口配置 create: false，Tauri 不在启动时自动创建窗口，
+            // 从根源避免 Windows 开机自启时窗口先创建再隐藏的闪窗问题。
+            // - 普通启动 / autostart 不隐藏：创建并显示
+            // - autostart + hidden + 低占用关闭：创建但保持隐藏
+            // - autostart + hidden + 低占用开启：不创建窗口
+            if !start_hidden {
+                main_window::show_or_create_main_window(app.handle());
+            } else if !low_resource_enabled {
+                main_window::create_hidden_main_window(app.handle());
             }
 
             // macOS: 启动时显示 Dock 图标（带小圆点）
             // 开机隐藏时不恢复 Dock，保持托盘后台状态
             #[cfg(target_os = "macos")]
-            if !(is_autostart && start_hidden) {
+            if is_autostart && start_hidden {
+                let _: () = app.set_dock_visibility(false);
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            } else {
                 let _: () = app.set_dock_visibility(true);
                 app.set_activation_policy(tauri::ActivationPolicy::Regular);
             }
@@ -119,18 +114,6 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
-
-            // 窗口关闭时隐藏到托盘，不退出；低占用模式开启时进一步销毁 WebView
-            // macOS: 同时隐藏 Dock 图标（小圆点消失），只保留托盘图标
-            if let Some(window) = app.get_webview_window("main") {
-                main_window::install_close_handler(&window);
-            }
-
-            // 窗口默认隐藏，避免 Windows 开机自启时先显示再隐藏造成闪窗。
-            // 普通启动则在关闭处理器就绪后显式显示并聚焦主窗口。
-            if !start_hidden {
-                main_window::show_or_create_main_window(app.handle());
-            }
 
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
