@@ -250,27 +250,65 @@ jobs:
           draft: true
           prerelease: false
           generate_release_notes: true
-          body: |
-            ### 下载安装
-
-            | 平台 | 文件 | 说明 |
-            | --- | --- | --- |
-            | macOS (Apple Silicon) | [MCPDock-${{ github.ref_name }}-arm64.dmg](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/MCPDock-${{ github.ref_name }}-arm64.dmg) | |
-            | macOS (Intel) | [MCPDock-${{ github.ref_name }}-x64.dmg](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/MCPDock-${{ github.ref_name }}-x64.dmg) | |
-            | Windows | [MCPDock-${{ github.ref_name }}-x64.msi](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/MCPDock-${{ github.ref_name }}-x64.msi) | 安装版 |
-            | Windows | [MCPDock-${{ github.ref_name }}-x64-Portable.zip](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/MCPDock-${{ github.ref_name }}-x64-Portable.zip) | 便携版 |
-
-            #### macOS 安装提示
-
-            MCPDock 未使用 Apple Developer 证书签名，首次安装后系统可能会阻止运行。若遇到此情况，请在终端执行：
-
-            ```bash
-            xattr -rd com.apple.quarantine /Applications/MCPDock.app
-            ```
-
-            > `.tar.gz` 和 `.sig` 为 Tauri 自动更新专用，无需手动下载。
           files: |
             release-assets/*
             latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Append download section to release body
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+
+          # Fetch the auto-generated release body
+          EXISTING_BODY=$(gh release view "$TAG" --repo "$REPO" --json body --jq '.body')
+
+          # Skip if download section already exists (e.g. workflow re-run)
+          if echo "$EXISTING_BODY" | grep -q '### 下载安装'; then
+            echo "Download section already exists, skipping."
+            exit 0
+          fi
+
+          # Build the download section
+          cat > download_section.md <<'EOF'
+
+          ---
+
+          ### 下载安装
+
+          | 平台 | 文件 | 说明 |
+          | --- | --- | --- |
+          EOF
+
+          echo "| macOS (Apple Silicon) | [MCPDock-${TAG}-arm64.dmg](https://github.com/${REPO}/releases/download/${TAG}/MCPDock-${TAG}-arm64.dmg) | |" >> download_section.md
+          echo "| macOS (Intel) | [MCPDock-${TAG}-x64.dmg](https://github.com/${REPO}/releases/download/${TAG}/MCPDock-${TAG}-x64.dmg) | |" >> download_section.md
+          echo "| Windows | [MCPDock-${TAG}-x64.msi](https://github.com/${REPO}/releases/download/${TAG}/MCPDock-${TAG}-x64.msi) | 安装版 |" >> download_section.md
+          echo "| Windows | [MCPDock-${TAG}-x64-Portable.zip](https://github.com/${REPO}/releases/download/${TAG}/MCPDock-${TAG}-x64-Portable.zip) | 便携版 |" >> download_section.md
+
+          cat >> download_section.md <<'EOF'
+
+          #### macOS 安装提示
+
+          MCPDock 未使用 Apple Developer 证书签名，首次安装后系统可能会阻止运行。若遇到此情况，请在终端执行：
+
+          ```bash
+          xattr -rd com.apple.quarantine /Applications/MCPDock.app
+          ```
+
+          > `.tar.gz` 和 `.sig` 为 Tauri 自动更新专用，无需手动下载。
+          EOF
+
+          # Combine: existing auto-generated body + download section
+          printf '%s\n' "$EXISTING_BODY" > release_body.md
+          cat download_section.md >> release_body.md
+
+          # Update the release with the combined body (keep as draft)
+          gh release edit "$TAG" --repo "$REPO" --draft --notes-file release_body.md
+
+          echo "Updated release body:"
+          cat release_body.md
