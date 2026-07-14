@@ -126,6 +126,12 @@ pub fn run() {
                 main_window::install_close_handler(&window);
             }
 
+            // 窗口默认隐藏，避免 Windows 开机自启时先显示再隐藏造成闪窗。
+            // 普通启动则在关闭处理器就绪后显式显示并聚焦主窗口。
+            if !start_hidden {
+                main_window::show_or_create_main_window(app.handle());
+            }
+
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Some(state) = app_handle.try_state::<AppState>() {
