@@ -123,4 +123,4 @@ fn restore_dock(app: &AppHandle) {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn restore_dock(_app: &AppHandle) {}
+const fn restore_dock(_app: &AppHandle) {}
