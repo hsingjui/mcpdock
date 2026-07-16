@@ -3,12 +3,16 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "MCPDock",
         "width": 1120,
         "height": 720,
         "minWidth": 920,
         "minHeight": 640,
         "center": true,
+        "create": false,
+        "visible": false,
+        "focus": false,
         "decorations": false
       }
     ]
