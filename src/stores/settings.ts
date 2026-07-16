@@ -79,10 +79,9 @@ function sanitize(s: AppSettings): AppSettings {
 
 async function syncAutostart(enabled: boolean): Promise<void> {
   if (enabled) {
-    const registered = await isEnabled();
-    if (!registered) {
-      await enable();
-    }
+    // Re-register even when already enabled so upgrades repair stale Windows
+    // entries that are missing the --autostart argument or point to an old path.
+    await enable();
     return;
   }
 

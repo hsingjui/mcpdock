@@ -25,6 +25,8 @@ use commands::mcp::{
 use commands::settings::{get_app_settings, update_app_settings};
 use state::AppState;
 
+const AUTOSTART_ARG: &str = "--autostart";
+
 /// Run the Tauri application.
 ///
 /// # Panics
@@ -44,7 +46,7 @@ pub fn run() {
                 db::app_settings::get_all(&conn)
             };
             // 开机自启模式：检测 --autostart 参数，根据设置决定是否隐藏窗口
-            let is_autostart = std::env::args().any(|arg| arg == "--autostart");
+            let is_autostart = std::env::args().any(|arg| arg == AUTOSTART_ARG);
             let start_hidden = is_autostart && settings.auto_start_hidden;
             let low_resource_enabled = settings.low_resource_mode_enabled;
             let state = AppState::new(db, settings);
@@ -163,13 +165,17 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_autostart::Builder::new()
-                .args(["--autostart"])
+                .args([AUTOSTART_ARG])
                 .build(),
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // 第二实例启动时，重建或显示并聚焦主窗口
-            main_window::show_or_create_main_window(app);
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // Windows may invoke more than one startup entry during login. An
+            // autostart duplicate must not turn the hidden first instance into
+            // a visible window; only an explicit user launch should restore it.
+            if !args.iter().any(|arg| arg == AUTOSTART_ARG) {
+                main_window::show_or_create_main_window(app);
+            }
         }))
         .invoke_handler(tauri::generate_handler![
             list_mcp_servers,
