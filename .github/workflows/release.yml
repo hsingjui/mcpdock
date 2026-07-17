@@ -249,7 +249,7 @@ jobs:
           name: MCPDock ${{ github.ref_name }}
           draft: true
           prerelease: false
-          generate_release_notes: true
+          generate_release_notes: false
           files: |
             release-assets/*
             latest.json
