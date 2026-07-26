@@ -9,7 +9,7 @@ use tauri::{AppHandle, Manager};
 use super::{
     collect_partial_results, find_peer_by_id, load_settings, with_request_timeout, GroupHandler,
 };
-use crate::db::mcp_server;
+use crate::db::{mcp_capability, mcp_server};
 use crate::state::AppState;
 
 pub struct GlobalHandler {
@@ -98,6 +98,67 @@ impl GlobalHandler {
         let state = self.app_handle.state::<AppState>();
         find_peer_by_id(&state, server_id, server_name).await
     }
+
+    /// Resolve the target server and original tool name from a request name.
+    /// Accepts both prefixed ("{server}{separator}{tool}") and bare tool names.
+    /// Bare names are resolved via the cached capability table.
+    fn resolve_tool_target(
+        &self,
+        request_name: &str,
+        separator: &str,
+    ) -> Result<(String, String), rmcp::ErrorData> {
+        let server_names = self
+            .load_server_names()
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        // Prefer the prefixed form when the prefix matches an enabled server.
+        if let Some((server_name, original_name)) =
+            GroupHandler::parse_prefixed_name(request_name, separator)
+        {
+            if server_names
+                .values()
+                .any(|(name, enabled)| *enabled && *name == server_name)
+            {
+                return Ok((server_name, original_name));
+            }
+        }
+
+        // Fallback: treat as a bare tool name and look up the owning server.
+        let state = self.app_handle.state::<AppState>();
+        let server_ids = {
+            let db = state
+                .db
+                .lock()
+                .map_err(|_| rmcp::ErrorData::internal_error("Failed to lock database", None))?;
+            mcp_capability::server_ids_with_tool(&db, request_name)
+                .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?
+        };
+
+        let mut matches: Vec<&str> = server_ids
+            .iter()
+            .filter_map(|id| server_names.get(id))
+            .filter(|(_, enabled)| *enabled)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        matches.sort_unstable();
+
+        match matches.as_slice() {
+            [server_name] => Ok(((*server_name).to_string(), request_name.to_string())),
+            [] => Err(rmcp::ErrorData::invalid_params(
+                format!(
+                    "Tool '{request_name}' not found. Expected '{{server}}{separator}{{tool}}' or a tool name available on a connected server"
+                ),
+                None,
+            )),
+            _ => Err(rmcp::ErrorData::invalid_params(
+                format!(
+                    "Tool '{request_name}' is ambiguous (available on servers: {}). Use the prefixed form '{{server}}{separator}{{tool}}'",
+                    matches.join(", ")
+                ),
+                None,
+            )),
+        }
+    }
 }
 
 impl ServerHandler for GlobalHandler {
@@ -183,16 +244,7 @@ impl ServerHandler for GlobalHandler {
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let (separator, timeout) = self.get_settings().await;
-        let (server_name, original_name) =
-            GroupHandler::parse_prefixed_name(&request.name, &separator).ok_or_else(|| {
-                rmcp::ErrorData::invalid_params(
-                    format!(
-                        "Invalid tool name format: '{}'. Expected '{{server}}{{separator}}{{tool}}' with separator '{separator}'",
-                        request.name
-                    ),
-                    None,
-                )
-            })?;
+        let (server_name, original_name) = self.resolve_tool_target(&request.name, &separator)?;
 
         let peer = self.connected_peer_by_name(&server_name).await?;
         let params = CallToolRequestParams::new(original_name)

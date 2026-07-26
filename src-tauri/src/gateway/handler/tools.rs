@@ -1,8 +1,68 @@
 use rmcp::model::{CallToolRequestParams, CallToolResult, ListToolsResult, Tool};
 use tauri::Manager;
 
+use crate::db::{mcp_capability, mcp_group};
 use crate::gateway::handler::{find_peer_by_id, with_request_timeout, GroupHandler};
 use crate::state::AppState;
+
+/// Resolve the target server and original tool name from a request name.
+/// Accepts both prefixed ("{server}{separator}{tool}") and bare tool names.
+/// Bare names are resolved via the cached capability table, scoped to the group.
+fn resolve_tool_target(
+    handler: &GroupHandler,
+    config: &mcp_group::McpGroupConfig,
+    request_name: &str,
+    separator: &str,
+) -> Result<(String, String), rmcp::ErrorData> {
+    // Prefer the prefixed form when the prefix matches a server in the group.
+    if let Some((server_name, original_name)) =
+        GroupHandler::parse_prefixed_name(request_name, separator)
+    {
+        if config.servers.iter().any(|s| s.name == server_name) {
+            return Ok((server_name, original_name));
+        }
+    }
+
+    // Fallback: treat as a bare tool name and look up the owning server.
+    let state = handler.app_handle.state::<AppState>();
+    let server_ids = {
+        let db = state
+            .db
+            .lock()
+            .map_err(|_| rmcp::ErrorData::internal_error("Failed to lock database", None))?;
+        mcp_capability::server_ids_with_tool(&db, request_name)
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?
+    };
+
+    let matches: Vec<&str> = config
+        .servers
+        .iter()
+        .filter(|s| server_ids.contains(&s.server_id))
+        .filter(|s| {
+            s.tools
+                .as_ref()
+                .is_none_or(|allowed| allowed.iter().any(|t| t == request_name))
+        })
+        .map(|s| s.name.as_str())
+        .collect();
+
+    match matches.as_slice() {
+        [server_name] => Ok(((*server_name).to_string(), request_name.to_string())),
+        [] => Err(rmcp::ErrorData::invalid_params(
+            format!(
+                "Tool '{request_name}' not found in group. Expected '{{server}}{separator}{{tool}}' or a tool name available in this group"
+            ),
+            None,
+        )),
+        _ => Err(rmcp::ErrorData::invalid_params(
+            format!(
+                "Tool '{request_name}' is ambiguous (available on servers: {}). Use the prefixed form '{{server}}{separator}{{tool}}'",
+                matches.join(", ")
+            ),
+            None,
+        )),
+    }
+}
 
 pub(super) async fn list_tools(handler: &GroupHandler) -> Result<ListToolsResult, rmcp::ErrorData> {
     let config = handler
@@ -118,13 +178,8 @@ pub(super) async fn call_tool(
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
     let (separator, timeout) = handler.get_settings().await;
 
-    let (server_name, original_name) = GroupHandler::parse_prefixed_name(&request.name, &separator)
-        .ok_or_else(|| {
-            rmcp::ErrorData::invalid_params(
-                format!("Invalid tool name format: '{}'. Expected '{{server}}{{separator}}{{tool}}' with separator '{separator}'", request.name),
-                None,
-            )
-        })?;
+    let (server_name, original_name) =
+        resolve_tool_target(handler, &config, &request.name, &separator)?;
 
     let server_sel = config
         .servers

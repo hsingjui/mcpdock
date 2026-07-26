@@ -136,6 +136,27 @@ pub fn list_all(conn: &Connection) -> anyhow::Result<Vec<McpCapability>> {
     Ok(result)
 }
 
+/// Find all server IDs that expose a tool with the given (unprefixed) name,
+/// based on the cached capability table.
+pub fn server_ids_with_tool(conn: &Connection, tool_name: &str) -> anyhow::Result<Vec<i64>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT server_id FROM mcp_capabilities \
+             WHERE type = 'tool' AND capability_key = ?1 ORDER BY server_id",
+        )
+        .context("Failed to prepare query")?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![tool_name], |row| row.get(0))
+        .context("Failed to query tool owners")?;
+
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(row.context("Failed to map server id")?);
+    }
+    Ok(result)
+}
+
 pub fn replace_server_capabilities(
     conn: &Connection,
     server_id: i64,
