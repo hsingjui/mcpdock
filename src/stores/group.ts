@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import type {
   McpCapability,
+  McpCapabilityType,
   McpGroup,
   McpGroupInput,
   McpGroupServerSelection,
@@ -251,7 +252,10 @@ export const useGroupStore = defineStore('group', () => {
     }
 
     if (selection[category] === null) {
-      selection[category] = [];
+      const capabilityType = category.slice(0, -1) as McpCapabilityType;
+      selection[category] = (capabilityMap.value[server.id] ?? [])
+        .filter((item) => item.type === capabilityType)
+        .map((item) => item.capabilityKey);
     }
 
     const values = selection[category];
